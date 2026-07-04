@@ -6,7 +6,6 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-red)
 ![Docker](https://img.shields.io/badge/Docker-Container-blue) ![GitHub
 Actions](https://img.shields.io/badge/GitHub_Actions-CI/CD-black)
-![Railway](https://img.shields.io/badge/Railway-Deployment-purple)
 
 ## 📌 Overview
 
