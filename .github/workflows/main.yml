@@ -12,37 +12,48 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ✅ Convert app name to lowercase — prevents this error permanently
+      # ✅ Convert app name to lowercase
       - name: Set Lowercase App Name
         run: |
           echo "HEROKU_APP=$(echo '${{ secrets.HEROKU_APP_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
+      # ✅ FIX: Use HEROKU_API_KEY as both username and password
+      # Heroku Container Registry uses API key as password with "_" as username
       - name: Login to Heroku Container Registry
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          echo "$HEROKU_API_KEY" | docker login \
+          echo "$HEROKU_API_KEY" | docker login registry.heroku.com \
             --username=_ \
-            --password-stdin \
-            registry.heroku.com
+            --password-stdin
 
+      # ✅ FIX: Explicitly tag with full registry URL
       - name: Build Docker Image
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           docker build \
             --no-cache \
-            -t registry.heroku.com/${{ env.HEROKU_APP }}/web \
+            -t registry.heroku.com/${{ env.HEROKU_APP }}/web:latest \
             .
 
+      # ✅ FIX: Re-login right before push (ensures auth is fresh)
       - name: Push Docker Image
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          docker push registry.heroku.com/${{ env.HEROKU_APP }}/web
+          echo "$HEROKU_API_KEY" | docker login registry.heroku.com \
+            --username=_ \
+            --password-stdin
+          docker push registry.heroku.com/${{ env.HEROKU_APP }}/web:latest
 
+      # ✅ Release the image on Heroku
       - name: Release Image on Heroku
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           IMAGE_ID=$(docker inspect \
-            registry.heroku.com/${{ env.HEROKU_APP }}/web \
+            registry.heroku.com/${{ env.HEROKU_APP }}/web:latest \
             --format={{.Id}})
 
           curl -n -X PATCH \
