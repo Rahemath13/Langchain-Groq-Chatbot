@@ -1,66 +1,55 @@
-# Your workflow name.
-name: Deploy to heroku.
+# .github/workflows/main.yml
 
-# Run workflow on every push to main branch.
+name: Deploy to Heroku
+
 on:
   push:
     branches: [main]
 
-# Your workflows jobs.
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
     steps:
-      # Check-out your repository.
-      - name: Checkout
-        uses: actions/checkout@v2
+      # Step 1: Checkout your code
+      - name: Checkout Repository
+        uses: actions/checkout@v4          # ✅ Latest stable version
 
+      # Step 2: Login to Heroku Container Registry
+      - name: Login to Heroku Container Registry
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          echo "$HEROKU_API_KEY" | docker login \
+            --username=_ \
+            --password-stdin \
+            registry.heroku.com
 
-### ⬇ IMPORTANT PART ⬇ ###
+      # Step 3: Build Docker Image
+      - name: Build Docker Image
+        run: |
+          docker build \
+            --no-cache \
+            -t registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/web \
+            .
 
-      - name: Build, Push and Release a Docker container to Heroku. # Your custom step name
-        uses: gonuit/heroku-docker-deploy@v1.3.3 # GitHub action name (leave it as it is).
-      - name: Test Docker Build
-        run: docker build -t test-image .
-        with:
-          # Below you must provide variables for your Heroku app.
+      # Step 4: Push Image to Heroku Registry
+      - name: Push Docker Image
+        run: |
+          docker push registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/web
 
-          # The email address associated with your Heroku account.
-          # If you don't want to use repository secrets (which is recommended) you can do:
-          # email: my.email@example.com
-          email: ${{ secrets.HEROKU_EMAIL }}
-          
-          # Heroku API key associated with provided user's email.
-          # Api Key is available under your Heroku account settings.
-          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
-          
-        
+      # Step 5: Release the image (activate it on Heroku)
+      - name: Release Image on Heroku
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          IMAGE_ID=$(docker inspect \
+            registry.heroku.com/${{ secrets.HEROKU_APP_NAME }}/web \
+            --format={{.Id}})
 
-          # Name of the heroku application to which the build is to be sent.
-          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
-
-          # (Optional, default: "./")
-          # Dockerfile directory.
-          # For example, if you have a Dockerfile in the root of your project, leave it as follows:
-          dockerfile_directory: ./
-
-          # (Optional, default: "Dockerfile")
-          # Dockerfile name.
-          dockerfile_name: Dockerfile
-
-          # (Optional, default: "")
-          # Additional options of docker build command.
-          docker_options: "--no-cache"
-
-          # (Optional, default: "web")
-          # Select the process type for which you want the docker container to be uploaded.
-          # By default, this argument is set to "web".
-          # For more information look at https://devcenter.heroku.com/articles/process-model
-          process_type: web
-          
-   
-          
-### ⬆ IMPORTANT PART ⬆ ###
+          curl -n -X PATCH \
+            https://api.heroku.com/apps/${{ secrets.HEROKU_APP_NAME }}/formation \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/vnd.heroku+json; version=3.docker-releases" \
+            -H "Authorization: Bearer $HEROKU_API_KEY" \
+            -d "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}"
