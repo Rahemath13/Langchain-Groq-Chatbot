@@ -1,5 +1,5 @@
 [project]
-name = "langchain-Groq chatbot"
+name = "langchain-Groq-chatbot"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
