@@ -12,53 +12,41 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ✅ Convert app name to lowercase
+      # ✅ Set lowercase app name
       - name: Set Lowercase App Name
         run: |
           echo "HEROKU_APP=$(echo '${{ secrets.HEROKU_APP_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-      # ✅ FIX: Use HEROKU_API_KEY as both username and password
-      # Heroku Container Registry uses API key as password with "_" as username
-      - name: Login to Heroku Container Registry
+      # ✅ Install Heroku CLI
+      - name: Install Heroku CLI
+        run: |
+          curl https://cli-assets.heroku.com/install.sh | sh
+
+      # ✅ Login using Heroku CLI (handles credentials correctly)
+      - name: Login to Heroku Container Registry via CLI
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          echo "$HEROKU_API_KEY" | docker login registry.heroku.com \
-            --username=_ \
-            --password-stdin
+          heroku container:login
 
-      # ✅ FIX: Explicitly tag with full registry URL
+      # ✅ Build image with correct tag
       - name: Build Docker Image
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           docker build \
             --no-cache \
-            -t registry.heroku.com/${{ env.HEROKU_APP }}/web:latest \
+            -t registry.heroku.com/${{ env.HEROKU_APP }}/web \
             .
 
-      # ✅ FIX: Re-login right before push (ensures auth is fresh)
+      # ✅ Push using Heroku CLI (no auth issues)
       - name: Push Docker Image
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          echo "$HEROKU_API_KEY" | docker login registry.heroku.com \
-            --username=_ \
-            --password-stdin
-          docker push registry.heroku.com/${{ env.HEROKU_APP }}/web:latest
+          heroku container:push web --app ${{ env.HEROKU_APP }}
 
-      # ✅ Release the image on Heroku
+      # ✅ Release using Heroku CLI
       - name: Release Image on Heroku
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          IMAGE_ID=$(docker inspect \
-            registry.heroku.com/${{ env.HEROKU_APP }}/web:latest \
-            --format={{.Id}})
-
-          curl -n -X PATCH \
-            https://api.heroku.com/apps/${{ env.HEROKU_APP }}/formation \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/vnd.heroku+json; version=3.docker-releases" \
-            -H "Authorization: Bearer $HEROKU_API_KEY" \
-            -d "{\"updates\":[{\"type\":\"web\",\"docker_image\":\"$IMAGE_ID\"}]}"
+          heroku container:release web --app ${{ env.HEROKU_APP }}
